@@ -15,6 +15,7 @@ const EDGE_PAD: f64 = 580.0; // must match .tile-strip CSS padding
 
 pub struct GalleryView {
     pub container: gtk::Box,
+    config: Rc<RefCell<Config>>,
     tiles: Rc<RefCell<Vec<VideoTile>>>,
     tile_box: gtk::Box,
     scrolled: gtk::ScrolledWindow,
@@ -140,6 +141,7 @@ impl GalleryView {
 
         Self {
             container,
+            config,
             tiles,
             tile_box,
             scrolled,
@@ -381,12 +383,136 @@ impl GalleryView {
         while let Some(child) = self.tile_box.first_child() {
             self.tile_box.remove(&child);
         }
-        let label = gtk::Label::builder()
-            .label("No videos found.\nAdd .mp4, .mkv, or .webm files to your video folder.")
-            .css_classes(vec!["empty-state"])
+
+        let wrapper = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(16)
             .halign(gtk::Align::Center)
             .valign(gtk::Align::Center)
+            .hexpand(true)
             .build();
-        self.tile_box.append(&label);
+
+        let folder = &self.config.borrow().general.video_folder;
+        let label = gtk::Label::builder()
+            .label(&format!(
+                "No videos found in\n{folder}\n\nAdd .mp4, .mkv, or .webm files, or choose a different folder."
+            ))
+            .css_classes(vec!["empty-state"])
+            .halign(gtk::Align::Center)
+            .justify(gtk::Justification::Center)
+            .build();
+
+        let button = gtk::Button::builder()
+            .label("Choose Folder")
+            .css_classes(vec!["suggested-action", "pill"])
+            .halign(gtk::Align::Center)
+            .build();
+
+        let config = self.config.clone();
+        let tiles = self.tiles.clone();
+        let tile_box = self.tile_box.clone();
+        let scrolled = self.scrolled.clone();
+        let focused = self.focused_index.clone();
+        let timer = self.preview_timer.clone();
+        let monitors = self.monitors.clone();
+        let monitor_sel = self.monitor_selector.clone();
+
+        button.connect_clicked(move |btn| {
+            let dialog = gtk::FileDialog::builder()
+                .title("Select Video Folder")
+                .modal(true)
+                .build();
+
+            let initial = gio::File::for_path(&config.borrow().general.video_folder);
+            dialog.set_initial_folder(Some(&initial));
+
+            let window = btn.root().and_downcast::<gtk::Window>();
+            let config = config.clone();
+            let tiles = tiles.clone();
+            let tile_box = tile_box.clone();
+            let scrolled = scrolled.clone();
+            let focused = focused.clone();
+            let timer = timer.clone();
+            let monitors = monitors.clone();
+            let monitor_sel = monitor_sel.clone();
+
+            dialog.select_folder(
+                window.as_ref(),
+                gio::Cancellable::NONE,
+                move |result| {
+                    if let Ok(file) = result {
+                        if let Some(path) = file.path() {
+                            let path_str = path.to_string_lossy().into_owned();
+                            config.borrow_mut().general.video_folder = path_str;
+                            config.borrow().save();
+
+                            // Reload videos into the existing gallery
+                            let cfg = config.borrow();
+                            let folder = Path::new(&cfg.general.video_folder);
+                            let videos = video_scanner::scan_folder(folder);
+
+                            // Clear tile box
+                            while let Some(child) = tile_box.first_child() {
+                                tile_box.remove(&child);
+                            }
+
+                            if videos.is_empty() {
+                                return; // still empty, leave as-is
+                            }
+
+                            let entries = thumbnails::ensure_thumbnails(&videos);
+                            let current_monitor = if monitors.len() > 1 {
+                                monitor_sel.selected_monitor()
+                            } else {
+                                monitors.first().map(|m| m.name.clone())
+                            };
+                            let current_wallpaper = current_monitor
+                                .as_ref()
+                                .and_then(|m| cfg.monitors.assignments.get(m))
+                                .cloned();
+
+                            let mut tiles_vec = tiles.borrow_mut();
+                            tiles_vec.clear();
+
+                            for (i, (video, thumb_path)) in entries.iter().enumerate() {
+                                let is_selected = current_wallpaper
+                                    .as_ref()
+                                    .is_some_and(|cw| cw == &video.path.to_string_lossy().as_ref());
+                                let tile = VideoTile::new(video, thumb_path, is_selected);
+
+                                let gesture = gtk::GestureClick::new();
+                                let tiles_ref = tiles.clone();
+                                let focused_ref = focused.clone();
+                                let scrolled_ref = scrolled.clone();
+                                let timer_ref = timer.clone();
+                                let tile_idx = i;
+                                gesture.connect_released(move |_, _, _, _| {
+                                    GalleryView::focus_tile(&tiles_ref, &focused_ref, &scrolled_ref, &timer_ref, tile_idx);
+                                });
+                                tile.widget.add_controller(gesture);
+
+                                tile_box.append(&tile.widget);
+                                tiles_vec.push(tile);
+                            }
+                            drop(tiles_vec);
+
+                            let tiles = tiles.clone();
+                            let scrolled = scrolled.clone();
+                            let focused = focused.clone();
+                            let timer = timer.clone();
+                            *focused.borrow_mut() = None;
+                            glib::idle_add_local_once(move || {
+                                if tiles.borrow().is_empty() { return; }
+                                GalleryView::focus_tile(&tiles, &focused, &scrolled, &timer, 0);
+                            });
+                        }
+                    }
+                },
+            );
+        });
+
+        wrapper.append(&label);
+        wrapper.append(&button);
+        self.tile_box.append(&wrapper);
     }
 }
