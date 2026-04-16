@@ -24,24 +24,34 @@ Built with Rust, GTK4, and libadwaita. Integrates with [caelestia-shell](https:/
 - `caelestia` (optional, for theming)
 - GTK4 >= 4.18, libadwaita >= 1.6
 
-## Building
+## Installation
+
+### Arch Linux (recommended)
+
+Build and install with the included PKGBUILD:
+
+```sh
+git clone https://github.com/moimart/video-wallpaper.git
+cd video-wallpaper
+makepkg -si
+```
+
+This installs the binary, desktop entry, and systemd service.
+
+### From source
 
 ```sh
 cargo build --release
+sudo install -Dm755 target/release/video-wallpaper /usr/bin/video-wallpaper
+install -Dm644 data/sh.martinez.VideoWallpaper.desktop ~/.local/share/applications/
 ```
 
-## Installation
+### Boot restore (optional)
+
+Re-apply your wallpapers on login automatically:
 
 ```sh
-# Binary
-sudo install -Dm755 target/release/video-wallpaper /usr/bin/video-wallpaper
-
-# Desktop entry
-install -Dm644 data/sh.martinez.VideoWallpaper.desktop ~/.local/share/applications/
-
-# Boot restore service (optional)
-install -Dm644 data/video-wallpaper-restore.service ~/.config/systemd/user/
-systemctl --user enable video-wallpaper-restore.service
+systemctl --user enable --now video-wallpaper-restore.service
 ```
 
 ## Hyprland setup
