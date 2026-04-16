@@ -1,6 +1,4 @@
-.tile-strip {
-    padding: 0 580px;  /* edge breathing room so first/last tiles don't hit the window border */
-}
+/* .tile-strip padding is generated from EDGE_PAD in gallery/mod.rs */
 
 .video-tile {
     padding: 0;

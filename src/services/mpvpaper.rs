@@ -1,7 +1,7 @@
 use std::path::Path;
-use std::process::Command;
 
 use crate::config::MpvpaperConfig;
+use super::process;
 
 pub fn apply_wallpaper(
     monitor: &str,
@@ -22,18 +22,12 @@ pub fn apply_wallpaper(
         config.panscan,
     );
 
-    let status = Command::new("mpvpaper")
-        .arg("-sf")
-        .arg("-o")
-        .arg(&mpv_opts)
-        .arg(monitor)
-        .arg(video_path)
-        .spawn()
-        .map_err(|e| format!("Failed to spawn mpvpaper: {e}"))?;
+    let video_str = video_path.to_string_lossy();
+    let args: Vec<&str> = vec!["-sf", "-o", &mpv_opts, monitor, &video_str];
+    let pid = process::spawn("mpvpaper", &args)?;
 
     log::info!(
-        "mpvpaper started (pid {}) on {monitor} with {}",
-        status.id(),
+        "mpvpaper started (pid {pid}) on {monitor} with {}",
         video_path.display()
     );
     Ok(())
@@ -55,18 +49,16 @@ pub fn restore_wallpapers(
 }
 
 fn kill_existing(monitor: &str) {
-    let output = Command::new("pgrep")
-        .args(["-a", "mpvpaper"])
-        .output();
-
-    let Ok(output) = output else { return };
+    let Ok(output) = process::run("pgrep", &["-a", "mpvpaper"]) else {
+        return;
+    };
 
     let text = String::from_utf8_lossy(&output.stdout);
     for line in text.lines() {
         if line.contains(monitor) {
             if let Some(pid_str) = line.split_whitespace().next() {
                 if let Ok(pid) = pid_str.parse::<u32>() {
-                    let _ = Command::new("kill").arg(pid.to_string()).status();
+                    let _ = process::run("kill", &[&pid.to_string()]);
                     log::info!("Killed mpvpaper pid {pid} for monitor {monitor}");
                 }
             }

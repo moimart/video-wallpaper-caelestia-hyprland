@@ -6,7 +6,7 @@ use crate::services::monitors::MonitorInfo;
 pub struct MonitorSelector {
     pub widget: gtk::Box,
     dropdown: gtk::DropDown,
-    monitor_names: Vec<String>,
+    monitors: Vec<MonitorInfo>,
 }
 
 impl MonitorSelector {
@@ -18,11 +18,9 @@ impl MonitorSelector {
             .halign(gtk::Align::Center)
             .build();
 
-        let label = gtk::Label::builder()
-            .label("Monitor:")
-            .build();
+        let label = gtk::Label::builder().label("Monitor:").build();
 
-        let monitor_names: Vec<String> = monitors
+        let display_names: Vec<String> = monitors
             .iter()
             .map(|m| {
                 if m.description.is_empty() {
@@ -33,24 +31,22 @@ impl MonitorSelector {
             })
             .collect();
 
-        let names_arr: Vec<&str> = monitor_names.iter().map(String::as_str).collect();
+        let names_arr: Vec<&str> = display_names.iter().map(String::as_str).collect();
         let dropdown = gtk::DropDown::from_strings(&names_arr);
         dropdown.set_selected(0);
 
         widget.append(&label);
         widget.append(&dropdown);
 
-        let raw_names: Vec<String> = monitors.iter().map(|m| m.name.clone()).collect();
-
         Self {
             widget,
             dropdown,
-            monitor_names: raw_names,
+            monitors: monitors.to_vec(),
         }
     }
 
     pub fn selected_monitor(&self) -> Option<String> {
         let idx = self.dropdown.selected() as usize;
-        self.monitor_names.get(idx).cloned()
+        self.monitors.get(idx).map(|m| m.name.clone())
     }
 }

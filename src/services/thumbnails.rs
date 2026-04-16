@@ -27,43 +27,81 @@ pub fn needs_generation(video: &VideoEntry) -> bool {
     true
 }
 
+/// Probe video duration and return a seek time string.
+/// Picks 10% of duration, clamped to [0.5, 5.0] seconds.
+fn probe_seek_time(video_path: &Path) -> String {
+    let output = Command::new("ffprobe")
+        .args([
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "csv=p=0",
+        ])
+        .arg(video_path)
+        .output();
+
+    if let Ok(o) = output {
+        if let Ok(text) = std::str::from_utf8(&o.stdout) {
+            if let Ok(duration) = text.trim().parse::<f64>() {
+                let seek = (duration * 0.1).clamp(0.5, 5.0);
+                return format!("{seek:.2}");
+            }
+        }
+    }
+
+    "1.0".to_string()
+}
+
 pub fn generate_thumbnail(video_path: &Path) -> Result<PathBuf, String> {
     let thumb_path = thumbnail_path_for(video_path);
     if let Some(parent) = thumb_path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
     }
 
-    // Try several seek points — some videos have black intros or are very short
-    let seek_times = ["00:00:02", "00:00:01", "00:00:00"];
-    let mut success = false;
+    let seek = probe_seek_time(video_path);
 
-    for seek in &seek_times {
-        let status = Command::new("ffmpeg")
-            .args(["-y", "-ss", seek, "-i"])
-            .arg(video_path)
-            .args([
-                "-frames:v", "1",
-                "-vf", "scale=320:-1",
-                "-q:v", "6",
-            ])
-            .arg(&thumb_path)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
+    let status = Command::new("ffmpeg")
+        .args(["-y", "-ss", &seek, "-i"])
+        .arg(video_path)
+        .args([
+            "-frames:v", "1",
+            "-vf", "scale=320:-1",
+            "-q:v", "6",
+        ])
+        .arg(&thumb_path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
 
-        if let Ok(s) = status {
-            if s.success() && thumb_path.exists() && fs::metadata(&thumb_path).map(|m| m.len() > 0).unwrap_or(false) {
-                success = true;
-                break;
-            }
-        }
+    match status {
+        Ok(s) if s.success() && thumb_path.exists() => Ok(thumb_path),
+        _ => Err(format!(
+            "ffmpeg failed to extract thumbnail from {}",
+            video_path.display()
+        )),
     }
+}
 
-    if !success {
-        return Err("ffmpeg failed to extract thumbnail".into());
-    }
-
-    Ok(thumb_path)
+pub fn ensure_thumbnails(videos: &[VideoEntry]) -> Vec<(VideoEntry, PathBuf)> {
+    videos
+        .iter()
+        .filter_map(|video| {
+            let thumb = if needs_generation(video) {
+                match generate_thumbnail(&video.path) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        log::warn!(
+                            "Thumbnail generation failed for {}: {e}",
+                            video.path.display()
+                        );
+                        return None;
+                    }
+                }
+            } else {
+                thumbnail_path_for(&video.path)
+            };
+            Some((video.clone(), thumb))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -100,27 +138,4 @@ mod tests {
         };
         assert!(needs_generation(&video));
     }
-}
-
-pub fn ensure_thumbnails(videos: &[VideoEntry]) -> Vec<(VideoEntry, PathBuf)> {
-    videos
-        .iter()
-        .filter_map(|video| {
-            let thumb = if needs_generation(video) {
-                match generate_thumbnail(&video.path) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        log::warn!(
-                            "Thumbnail generation failed for {}: {e}",
-                            video.path.display()
-                        );
-                        return None;
-                    }
-                }
-            } else {
-                thumbnail_path_for(&video.path)
-            };
-            Some((video.clone(), thumb))
-        })
-        .collect()
 }

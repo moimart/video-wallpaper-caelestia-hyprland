@@ -5,6 +5,9 @@ use std::path::PathBuf;
 
 use crate::util;
 
+const VALID_GPU_APIS: &[&str] = &["vulkan", "opengl"];
+const VALID_HWDEC: &[&str] = &["auto", "nvdec", "vaapi", "no"];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub general: GeneralConfig,
@@ -56,9 +59,23 @@ impl Config {
         let path = Self::path();
         if path.exists() {
             match fs::read_to_string(&path) {
-                Ok(contents) => match toml::from_str(&contents) {
-                    Ok(config) => return config,
-                    Err(e) => log::warn!("Failed to parse config: {e}"),
+                Ok(contents) => match toml::from_str::<Config>(&contents) {
+                    Ok(mut config) => {
+                        config.validate();
+                        return config;
+                    }
+                    Err(e) => {
+                        // Surface the specific parse location
+                        if let Some(span) = e.span() {
+                            log::warn!(
+                                "Failed to parse config at bytes {}..{}: {e}",
+                                span.start,
+                                span.end,
+                            );
+                        } else {
+                            log::warn!("Failed to parse config: {e}");
+                        }
+                    }
                 },
                 Err(e) => log::warn!("Failed to read config: {e}"),
             }
@@ -80,6 +97,27 @@ impl Config {
                 }
             }
             Err(e) => log::error!("Failed to serialize config: {e}"),
+        }
+    }
+
+    /// Clamp and correct any out-of-range values.
+    fn validate(&mut self) {
+        self.mpvpaper.panscan = self.mpvpaper.panscan.clamp(0.0, 1.0);
+
+        if !VALID_GPU_APIS.contains(&self.mpvpaper.gpu_api.as_str()) {
+            log::warn!(
+                "Invalid gpu_api {:?}, resetting to vulkan",
+                self.mpvpaper.gpu_api
+            );
+            self.mpvpaper.gpu_api = "vulkan".into();
+        }
+
+        if !VALID_HWDEC.contains(&self.mpvpaper.hwdec.as_str()) {
+            log::warn!(
+                "Invalid hwdec {:?}, resetting to auto",
+                self.mpvpaper.hwdec
+            );
+            self.mpvpaper.hwdec = "auto".into();
         }
     }
 
@@ -143,5 +181,45 @@ hwdec = "vaapi"
         assert!(!cfg.mpvpaper.loop_video);
         assert_eq!(cfg.mpvpaper.gpu_api, "opengl");
         assert!(cfg.monitors.assignments.is_empty());
+    }
+
+    #[test]
+    fn validate_clamps_panscan() {
+        let mut cfg = Config::default();
+        cfg.mpvpaper.panscan = 5.0;
+        cfg.validate();
+        assert_eq!(cfg.mpvpaper.panscan, 1.0);
+
+        cfg.mpvpaper.panscan = -1.0;
+        cfg.validate();
+        assert_eq!(cfg.mpvpaper.panscan, 0.0);
+    }
+
+    #[test]
+    fn validate_resets_invalid_gpu_api() {
+        let mut cfg = Config::default();
+        cfg.mpvpaper.gpu_api = "potato".into();
+        cfg.validate();
+        assert_eq!(cfg.mpvpaper.gpu_api, "vulkan");
+    }
+
+    #[test]
+    fn validate_resets_invalid_hwdec() {
+        let mut cfg = Config::default();
+        cfg.mpvpaper.hwdec = "garbage".into();
+        cfg.validate();
+        assert_eq!(cfg.mpvpaper.hwdec, "auto");
+    }
+
+    #[test]
+    fn validate_accepts_valid_values() {
+        let mut cfg = Config::default();
+        cfg.mpvpaper.gpu_api = "opengl".into();
+        cfg.mpvpaper.hwdec = "nvdec".into();
+        cfg.mpvpaper.panscan = 0.7;
+        cfg.validate();
+        assert_eq!(cfg.mpvpaper.gpu_api, "opengl");
+        assert_eq!(cfg.mpvpaper.hwdec, "nvdec");
+        assert_eq!(cfg.mpvpaper.panscan, 0.7);
     }
 }

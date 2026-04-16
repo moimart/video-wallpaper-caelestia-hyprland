@@ -94,9 +94,14 @@ impl VideoWallpaperApp {
 
         // Setup theming
         if let Some(display) = gdk::Display::default() {
-            // Load static base CSS
+            // Load static base CSS + generated tile-strip padding
             let base_css = gtk::CssProvider::new();
-            base_css.load_from_string(include_str!("../style/base.css"));
+            let css_str = format!(
+                "{}\n{}",
+                include_str!("../style/base.css"),
+                crate::gallery::tile_strip_css(),
+            );
+            base_css.load_from_string(&css_str);
             gtk::style_context_add_provider_for_display(
                 &display,
                 &base_css,
