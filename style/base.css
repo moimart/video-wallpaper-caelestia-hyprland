@@ -1,0 +1,49 @@
+.tile-strip {
+    padding: 0 580px;  /* edge breathing room so first/last tiles don't hit the window border */
+}
+
+.video-tile {
+    padding: 0;
+    margin: 0;
+    transition: transform 300ms ease, opacity 300ms ease, border-color 200ms ease;
+    opacity: 0.4;
+    transform: scale(0.65);
+}
+
+/* Coverflow distance tiers — subtle scaling for even visual spacing */
+.video-tile.coverflow-center {
+    transform: scale(1.1);
+    opacity: 1.0;
+}
+
+.video-tile.coverflow-near {
+    transform: scale(0.9);
+    opacity: 0.7;
+}
+
+.video-tile.coverflow-far {
+    transform: scale(0.78);
+    opacity: 0.5;
+}
+
+.video-tile.coverflow-distant {
+    transform: scale(0.65);
+    opacity: 0.4;
+}
+
+.gallery-scroll {
+    min-height: 320px;
+}
+
+.monitor-bar {
+    padding: 8px 16px;
+}
+
+.settings-gear {
+    opacity: 0.6;
+    transition: opacity 200ms ease;
+}
+
+.settings-gear:hover {
+    opacity: 1.0;
+}

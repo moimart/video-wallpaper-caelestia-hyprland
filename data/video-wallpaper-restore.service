@@ -1,0 +1,12 @@
+[Unit]
+Description=Restore video wallpapers
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/video-wallpaper --restore
+RemainAfterExit=no
+
+[Install]
+WantedBy=graphical-session.target
