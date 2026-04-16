@@ -156,7 +156,6 @@ This makes the video wallpaper feed the desktop color scheme just like a static 
 windowrule {
   name = windowrule-video-wallpaper
   float = on
-  noborder = on
   size = 1400 360
   match:class = sh.martinez.VideoWallpaper
 }

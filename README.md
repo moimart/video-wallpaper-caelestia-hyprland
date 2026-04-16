@@ -62,7 +62,6 @@ Add a windowrule to float and center the app:
 windowrule {
   name = windowrule-video-wallpaper
   float = on
-  noborder = on
   size = 1400 360
   match:class = sh.martinez.VideoWallpaper
 }
